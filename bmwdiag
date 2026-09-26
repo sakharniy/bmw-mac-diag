@@ -1,0 +1,14 @@
+#!/bin/bash
+# Launcher: ./bmwdiag <command> ...   (build first with ./build.sh)
+DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ ! -x "$DIR/bin/bmwdiag" ]; then
+    echo "not built yet — run ./build.sh first"
+    exit 1
+fi
+# .NET installed per-user (dotnet-install.sh) lives in ~/.dotnet; the brew/pkg install is found automatically
+if [ -z "${DOTNET_ROOT:-}" ] && [ -x "$HOME/.dotnet/dotnet" ]; then export DOTNET_ROOT="$HOME/.dotnet"; fi
+# keep the Mac awake while the menu, a live view or a long recording is running
+if [ -z "${1:-}" ] || [ "${1:-}" = "menu" ] || [ "${1:-}" = "live" ] || [ "${1:-}" = "watch" ]; then
+    caffeinate -dims -w $$ &
+fi
+exec "$DIR/bin/bmwdiag" "$@"

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- bmwdiag — BMW diagnostics on macOS on top of EdiabasLib (GPL-3.0, github.com/uholeschak/ediabaslib).
+       EdiabasLib and its dependencies are NOT stored in this repo: ./build.sh downloads the official
+       release and extracts the needed DLLs into ../../lib. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AssemblyName>bmwdiag</AssemblyName>
+    <RootNamespace>BmwDiag</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- EdiabasLib is built for net10.0-windows; the serial (STD:OBD) path works on macOS -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LibDir>$(MSBuildThisFileDirectory)../../lib/</LibDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="EdiabasLib"><HintPath>$(LibDir)EdiabasLib.dll</HintPath></Reference>
+    <Reference Include="BouncyCastle.Cryptography"><HintPath>$(LibDir)BouncyCastle.Cryptography.dll</HintPath></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>$(LibDir)Newtonsoft.Json.dll</HintPath></Reference>
+    <Reference Include="InTheHand.BluetoothLE"><HintPath>$(LibDir)InTheHand.BluetoothLE.dll</HintPath></Reference>
+    <Reference Include="InTheHand.Net.Bluetooth"><HintPath>$(LibDir)InTheHand.Net.Bluetooth.dll</HintPath></Reference>
+    <!-- unix build of System.IO.Ports + native shim for the current Mac architecture -->
+    <Reference Include="System.IO.Ports"><HintPath>$(LibDir)System.IO.Ports.dll</HintPath></Reference>
+    <None Include="$(LibDir)libSystem.IO.Ports.Native.dylib" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="report-template.html" LogicalName="BmwDiag.report-template.html" />
+  </ItemGroup>
+</Project>

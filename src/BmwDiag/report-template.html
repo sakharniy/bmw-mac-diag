@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="__LANG__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+/* colors: reference palette, categorical slots 1-2 (validated light + dark) */
+:root {
+  color-scheme: light;
+  --surface-0: #f4f3f0; --surface-1: #fcfcfb; --grid: #e4e3df;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7974;
+  --series-1: #2a78d6; --series-2: #eb6834;
+  --select: rgba(42, 120, 214, .12); --hair: #9a9994;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --grid: #2e2e2c;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-2: #d95926;
+    --select: rgba(57, 135, 229, .18); --hair: #6f6e68;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --grid: #2e2e2c;
+  --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --series-1: #3987e5; --series-2: #d95926;
+  --select: rgba(57, 135, 229, .18); --hair: #6f6e68;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--text-secondary); margin: 0 0 20px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.tile { background: var(--surface-1); border-radius: 8px; padding: 10px 12px; }
+.tile .label { color: var(--text-secondary); font-size: 12px; }
+.tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 12px; color: var(--text-secondary); font-size: 13px; }
+.controls select, .controls button { font: inherit; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--grid); border-radius: 6px; padding: 4px 8px; }
+.chart { background: var(--surface-1); border-radius: 8px; padding: 10px 12px 6px; margin-bottom: 12px; position: relative; }
+.chart h2 { font-size: 14px; margin: 0; display: inline; }
+.chart .unit { color: var(--text-muted); font-size: 13px; }
+.legend { display: inline-flex; gap: 14px; margin-left: 14px; color: var(--text-secondary); font-size: 13px; }
+.key { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
+.note { color: var(--text-muted); font-size: 12px; margin-left: 10px; }
+.plot { position: relative; height: 170px; margin-top: 6px; cursor: crosshair; }
+.plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tip { position: fixed; pointer-events: none; background: var(--surface-1); border: 1px solid var(--grid);
+  border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none; z-index: 10; }
+.tip .t { color: var(--text-muted); margin-bottom: 2px; }
+.tip .row { white-space: nowrap; }
+.tip b { font-variant-numeric: tabular-nums; }
+.tip .name { color: var(--text-secondary); margin-left: 4px; }
+details { background: var(--surface-1); border-radius: 8px; padding: 10px 12px; margin-top: 16px; }
+summary { cursor: pointer; color: var(--text-secondary); }
+.tablewrap { overflow-x: auto; margin-top: 10px; max-height: 480px; }
+table { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { padding: 3px 8px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-secondary); font-weight: 500; }
+footer { color: var(--text-muted); font-size: 12px; margin-top: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title"></h1>
+  <p class="sub" id="sub"></p>
+  <div class="tiles" id="tiles"></div>
+  <div class="controls">
+    <span id="hint"></span>
+    <button id="reset" hidden></button>
+    <label><span id="addLabel"></span> <select id="add"></select></label>
+  </div>
+  <div id="charts"></div>
+  <details><summary id="tableTitle"></summary><div class="tablewrap"><table id="table"></table></div></details>
+  <footer id="footer"></footer>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+const D = __DATA__;
+const T = D.text;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d) => v == null || Number.isNaN(v) ? "—" : v.toLocaleString(D.lang, { minimumFractionDigits: d, maximumFractionDigits: d });
+const t = D.t;                      // seconds from the start
+const n = t.length;
+let view = [t[0], t[n - 1]];        // visible time range
+let hoverT = null, drag = null;
+
+$("title").textContent = D.title;
+$("sub").textContent = D.sub;
+$("hint").textContent = T.hint;
+$("reset").textContent = T.reset;
+$("addLabel").textContent = T.add;
+$("tableTitle").textContent = T.table;
+$("footer").textContent = D.footer;
+for (const tile of D.tiles) {
+  const el = document.createElement("div"); el.className = "tile";
+  const l = document.createElement("div"); l.className = "label"; l.textContent = tile.label;
+  const v = document.createElement("div"); v.className = "value"; v.textContent = tile.value;
+  el.append(l, v); $("tiles").append(el);
+}
+
+const clock = s => {                 // seconds from start -> wall clock hh:mm:ss
+  const x = Math.round(D.startSec + s) % 86400;
+  return [x / 3600 | 0, (x / 60 | 0) % 60, x % 60].map(v => String(v).padStart(2, "0")).join(":");
+};
+function lower(arr, x) { let a = 0, b = arr.length; while (a < b) { const m = (a + b) >> 1; if (arr[m] < x) a = m + 1; else b = m; } return a; }
+function nice(lo, hi, count) {
+  const span = hi - lo, step0 = span / count, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map(k => k * mag).find(s => s >= step0) || 10 * mag;
+  const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(v);
+  return { ticks, dec: Math.max(0, -Math.floor(Math.log10(step) + 1e-9)) };
+}
+
+const charts = [];
+function addChart(spec) {
+  const sec = document.createElement("section"); sec.className = "chart";
+  const h = document.createElement("h2"); h.textContent = spec.title;
+  const u = document.createElement("span"); u.className = "unit"; u.textContent = spec.unit ? ", " + spec.unit : "";
+  const lg = document.createElement("span"); lg.className = "legend";
+  if (spec.cols.length > 1) spec.cols.forEach((c, i) => {
+    const s = document.createElement("span"), k = document.createElement("span");
+    k.className = "key"; k.style.borderColor = `var(--series-${i + 1})`;
+    s.append(k, document.createTextNode(D.cols[c].short)); lg.append(s);
+  });
+  sec.append(h, u, lg);
+  if (spec.note) { const nt = document.createElement("span"); nt.className = "note"; nt.textContent = spec.note; sec.append(nt); }
+  const plot = document.createElement("div"); plot.className = "plot";
+  const base = document.createElement("canvas"), over = document.createElement("canvas");
+  plot.append(base, over); sec.append(plot); $("charts").append(sec);
+  const c = { spec, plot, base, over, pad: { l: 52, r: 10, t: 8, b: 20 } };
+  charts.push(c);
+  plot.addEventListener("pointermove", e => onMove(c, e));
+  plot.addEventListener("pointerleave", () => { hoverT = null; if (!drag) { $("tip").style.display = "none"; drawOverlays(); } });
+  plot.addEventListener("pointerdown", e => { drag = { c, x0: xToT(c, e.offsetX), x1: null }; plot.setPointerCapture(e.pointerId); });
+  plot.addEventListener("pointerup", () => {
+    if (drag && drag.x1 != null && Math.abs(drag.x1 - drag.x0) > (view[1] - view[0]) / 200) {
+      view = [Math.min(drag.x0, drag.x1), Math.max(drag.x0, drag.x1)]; $("reset").hidden = false; drag = null; drawAll();
+    } else { drag = null; drawOverlays(); }
+  });
+  plot.addEventListener("dblclick", resetView);
+  draw(c);
+  return c;
+}
+function resetView() { view = [t[0], t[n - 1]]; $("reset").hidden = true; drawAll(); }
+$("reset").addEventListener("click", resetView);
+
+function size(c, cv) {
+  const r = c.plot.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); return { g, w: r.width, h: r.height };
+}
+function xToT(c, x) { const w = c.plot.clientWidth - c.pad.l - c.pad.r; return view[0] + (x - c.pad.l) / w * (view[1] - view[0]); }
+
+function draw(c) {
+  const { g, w, h } = size(c, c.base), p = c.pad, pw = w - p.l - p.r, ph = h - p.t - p.b;
+  const i0 = Math.max(0, lower(t, view[0]) - 1), i1 = Math.min(n, lower(t, view[1]) + 1);
+  const clip = c.spec.clip;
+  // y range over the visible part (values above the clip limit do not count)
+  let lo = Infinity, hi = -Infinity;
+  for (const col of c.spec.cols) for (let i = i0; i < i1; i++) {
+    const v = D.data[col][i]; if (v == null || (clip != null && v > clip)) continue; if (v < lo) lo = v; if (v > hi) hi = v;
+  }
+  if (lo === Infinity) { lo = 0; hi = 1; }
+  const span = Math.max(hi - lo, c.spec.minSpan || 0, 1e-6), mid = (hi + lo) / 2;
+  lo = mid - span / 2 - span * .06; hi = mid + span / 2 + span * .06;
+  c.lo = lo; c.hi = hi;
+  const X = s => p.l + (s - view[0]) / (view[1] - view[0]) * pw, Y = v => p.t + (1 - (v - lo) / (hi - lo)) * ph;
+  // grid + y labels
+  g.font = "11px -apple-system, sans-serif"; g.textBaseline = "middle"; g.textAlign = "right";
+  const yt = nice(lo, hi, 4);
+  for (const v of yt.ticks) {
+    const y = Math.round(Y(v)) + .5;
+    g.strokeStyle = css("--grid"); g.lineWidth = 1; g.beginPath(); g.moveTo(p.l, y); g.lineTo(w - p.r, y); g.stroke();
+    // no label right at the edges: it would collide with the time labels / the title
+    if (y > p.t + 4 && y < h - p.b - 6) { g.fillStyle = css("--text-muted"); g.fillText(fmt(v, yt.dec), p.l - 6, y); }
+  }
+  // x labels: wall clock
+  g.textAlign = "center"; g.textBaseline = "top";
+  const xt = nice(view[0], view[1], Math.max(2, Math.floor(pw / 110)));
+  for (const s of xt.ticks) g.fillText(clock(s), X(s), h - p.b + 4);
+  // lines: 2px; many points -> min/max per pixel column so spikes stay visible
+  g.save(); g.beginPath(); g.rect(p.l, p.t - 2, pw, ph + 4); g.clip();
+  c.spec.cols.forEach((col, k) => {
+    g.strokeStyle = css(`--series-${k + 1}`); g.lineWidth = 2; g.lineJoin = "round"; g.lineCap = "round";
+    const vals = D.data[col]; g.beginPath(); let pen = false;
+    const perPx = (i1 - i0) / pw;
+    if (perPx <= 2) {
+      for (let i = i0; i < i1; i++) {
+        const v = vals[i]; if (v == null || (clip != null && v > clip)) { pen = false; continue; }
+        const x = X(t[i]), y = Y(v); if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; }
+      }
+    } else {
+      for (let px = 0; px < pw; px++) {
+        const a = lower(t, view[0] + px / pw * (view[1] - view[0])), b = lower(t, view[0] + (px + 1) / pw * (view[1] - view[0]));
+        let mn = Infinity, mx = -Infinity;
+        for (let i = a; i < b; i++) { const v = vals[i]; if (v == null || (clip != null && v > clip)) continue; if (v < mn) mn = v; if (v > mx) mx = v; }
+        if (mn === Infinity) { pen = false; continue; }
+        const x = p.l + px + .5;
+        if (pen) g.lineTo(x, Y(mn)); else { g.moveTo(x, Y(mn)); pen = true; }
+        g.lineTo(x, Y(mx));
+      }
+    }
+    g.stroke();
+  });
+  g.restore();
+  drawOverlay(c);
+}
+function drawOverlay(c) {
+  const { g, w, h } = size(c, c.over), p = c.pad, pw = w - p.l - p.r;
+  const X = s => p.l + (s - view[0]) / (view[1] - view[0]) * pw;
+  if (drag && drag.x1 != null) {
+    const a = X(Math.min(drag.x0, drag.x1)), b = X(Math.max(drag.x0, drag.x1));
+    g.fillStyle = css("--select"); g.fillRect(a, p.t, b - a, h - p.t - p.b);
+  }
+  if (hoverT != null && hoverT >= view[0] && hoverT <= view[1]) {
+    const x = Math.round(X(hoverT)) + .5;
+    g.strokeStyle = css("--hair"); g.lineWidth = 1; g.beginPath(); g.moveTo(x, p.t); g.lineTo(x, h - p.b); g.stroke();
+    const i = Math.min(n - 1, lower(t, hoverT));
+    c.spec.cols.forEach((col, k) => {       // 8px end-dots with a 2px surface ring
+      const v = D.data[col][i]; if (v == null || (c.spec.clip != null && v > c.spec.clip)) return;
+      const y = p.t + (1 - (v - c.lo) / (c.hi - c.lo)) * (h - p.t - p.b);
+      g.beginPath(); g.arc(x, y, 4, 0, 2 * Math.PI); g.fillStyle = css(`--series-${k + 1}`); g.fill();
+      g.lineWidth = 2; g.strokeStyle = css("--surface-1"); g.stroke();
+    });
+  }
+}
+function drawOverlays() { charts.forEach(drawOverlay); }
+function drawAll() { charts.forEach(draw); }
+
+function onMove(c, e) {
+  const s = xToT(c, e.offsetX);
+  if (drag) { drag.x1 = s; drawOverlays(); return; }
+  hoverT = Math.max(view[0], Math.min(view[1], s));
+  drawOverlays();
+  const i = Math.min(n - 1, lower(t, hoverT)), tip = $("tip");
+  tip.replaceChildren();
+  const tt = document.createElement("div"); tt.className = "t"; tt.textContent = clock(t[i]); tip.append(tt);
+  c.spec.cols.forEach((col, k) => {
+    const row = document.createElement("div"); row.className = "row";
+    const key = document.createElement("span"); key.className = "key"; key.style.borderColor = `var(--series-${k + 1})`;
+    const b = document.createElement("b"); b.textContent = fmt(D.data[col][i], D.cols[col].dec) + (D.cols[col].unit ? " " + D.cols[col].unit : "");
+    const nm = document.createElement("span"); nm.className = "name"; nm.textContent = c.spec.cols.length > 1 ? D.cols[col].short : "";
+    row.append(key, b, nm); tip.append(row);
+  });
+  tip.style.display = "block";
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - r.width - 8) + "px";
+  tip.style.top = Math.max(8, e.clientY - r.height - 10) + "px";
+}
+
+D.charts.forEach(addChart);
+// any other value as an extra chart
+const sel = $("add");
+const opt0 = document.createElement("option"); opt0.value = ""; opt0.textContent = "—"; sel.append(opt0);
+D.cols.forEach((col, i) => { const o = document.createElement("option"); o.value = i; o.textContent = col.name + (col.unit ? `, ${col.unit}` : ""); sel.append(o); });
+sel.addEventListener("change", () => {
+  if (sel.value === "") return;
+  const i = +sel.value; addChart({ title: D.cols[i].name, unit: D.cols[i].unit, cols: [i] }).plot.scrollIntoView({ behavior: "smooth", block: "center" });
+  sel.value = "";
+});
+addEventListener("resize", drawAll);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+
+// table view: one row per second
+const tbl = $("table"), head = tbl.insertRow();
+[T.time, ...D.cols.map(c => c.name + (c.unit ? `, ${c.unit}` : ""))].forEach(hd => { const th = document.createElement("th"); th.textContent = hd; head.append(th); });
+let lastSec = -1;
+for (let i = 0; i < n; i++) {
+  if (Math.floor(t[i]) === lastSec) continue; lastSec = Math.floor(t[i]);
+  const r = tbl.insertRow(); r.insertCell().textContent = clock(t[i]);
+  D.cols.forEach((c, k) => { r.insertCell().textContent = fmt(D.data[k][i], c.dec); });
+}
+</script>
+</body>
+</html>

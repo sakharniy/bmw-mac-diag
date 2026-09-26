@@ -1,0 +1,14 @@
+[
+  { "name": "Engine (DDE)",            "name_ru": "Двигатель (DDE)",          "sgbd": "D_MOTOR.GRP" },
+  { "name": "Gearbox (EGS)",           "name_ru": "Коробка (EGS)",            "sgbd": "D_EGS.GRP" },
+  { "name": "Instrument cluster",      "name_ru": "Приборка",                 "sgbd": "KOMB87.PRG" },
+  { "name": "CAS (immobilizer)",       "name_ru": "CAS (иммобилайзер)",       "sgbd": "CAS.PRG" },
+  { "name": "DSC (ABS)",               "name_ru": "DSC (ABS)",                "sgbd": "DSC_87.PRG" },
+  { "name": "Climate (IHKA)",          "name_ru": "Климат (IHKA)",            "sgbd": "IHKA87.PRG" },
+  { "name": "Airbags (ACSM)",          "name_ru": "Подушки (ACSM)",           "sgbd": "ACSM2.PRG" },
+  { "name": "Footwell / lights (FRM)", "name_ru": "Свет (FRM)",               "sgbd": "FRM_87.PRG" },
+  { "name": "Junction box (JBBF)",     "name_ru": "Блок предохранителей (JBBF)", "sgbd": "JBBF87.PRG" },
+  { "name": "Fuel pump (EKP)",         "name_ru": "Топливный насос (EKP)",    "sgbd": "EKP_60.PRG" },
+  { "name": "Parking sensors (PDC)",   "name_ru": "Парктроник (PDC)",         "sgbd": "PDC_87.PRG" },
+  { "name": "iDrive (CCC)",            "name_ru": "iDrive (CCC)",             "sgbd": "CCC_60.PRG" }
+]

@@ -1,0 +1,14 @@
+# build output and downloaded EdiabasLib
+bin/
+obj/
+lib/
+.cache/
+
+# your data: never commit BMW SGBD files or your car's logs
+ecu/*
+!ecu/README.md
+logs/
+trace/
+*.csv
+
+.DS_Store

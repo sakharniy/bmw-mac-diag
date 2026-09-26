@@ -1,0 +1,55 @@
+// BMW N47D20C (N47TÜ), Bosch DDE 7.21 — e.g. E90/E91/E92/E93 320d LCI 2010.
+// Tested on an E93 320d 2010 (ECU 8519671, ID_VAR_INDEX 0x5745 "WE", ID_DIAG_INDEX 0x10).
+// Needs D72N47B0.PRG (and KOMB87.PRG for the fuel level) in your ecu folder.
+// Check your variant first: bmwdiag ident D_MOTOR.GRP  (needs a recent T_GRTB.PRG)
+// *_ru fields are used when the interface language is Russian.
+{
+  "name": "BMW N47D20C — DDE 7.21 (D72N47B0)",
+  "sgbd": "D72N47B0.PRG",
+  "block": { "job": "STATUS_MESSWERTBLOCK_LESEN", "firstPrefix": "JA;", "nextPrefix": "NEIN;" },
+  "values": [
+    { "arg": "INMOT",  "result": "STAT_MOTORDREHZAHL_WERT",         "label": "Engine speed",          "label_ru": "Обороты",                  "unit": "rpm", "unit_ru": "об/мин", "group": "Engine", "group_ru": "Двигатель" },
+    { "arg": "IVKMH",  "result": "STAT_GESCHWINDIGKEIT_WERT",       "label": "Vehicle speed",         "label_ru": "Скорость",                 "unit": "km/h", "unit_ru": "км/ч" },
+    { "arg": "IFPWG",  "result": "STAT_FAHRERWUNSCH_PEDAL_WERT",    "label": "Accelerator pedal",     "label_ru": "Педаль газа",              "unit": "%" },
+
+    { "arg": "ITKUM",  "result": "STAT_KUEHLMITTELTEMPERATUR_WERT", "label": "Coolant",               "label_ru": "Охлаждающая жидкость",     "unit": "°C", "group": "Temperatures", "group_ru": "Температуры" },
+    { "arg": "ITOEL",  "result": "STAT_MOTOROEL_TEMPERATUR_WERT",   "label": "Oil",                   "label_ru": "Масло",                    "unit": "°C" },
+    { "arg": "ITLAL",  "result": "STAT_LADELUFTTEMPERATUR_WERT",    "label": "Charge air (after IC)", "label_ru": "Воздух после интеркулера", "unit": "°C" },
+    { "arg": "ITUMG",  "result": "STAT_UMGEBUNGSTEMPERATUR_WERT",   "label": "Ambient",               "label_ru": "Наружный воздух",          "unit": "°C" },
+
+    { "arg": "SPLAD",  "result": "STAT_LADEDRUCK_SOLL_WERT",        "label": "Boost target (abs)",    "label_ru": "Наддув: задание (абс.)",   "unit": "bar", "unit_ru": "бар", "scale": 0.001, "format": "0.00", "group": "Turbo", "group_ru": "Турбина" },
+    { "arg": "IPLAD",  "result": "STAT_LADEDRUCK_WERT",             "label": "Boost actual (abs)",    "label_ru": "Наддув: факт (абс.)",      "unit": "bar", "unit_ru": "бар", "scale": 0.001, "format": "0.00" },
+    { "arg": "IALDS",  "result": "STAT_LADEDRUCKSTELLER_ANSTEUERUNG_WERT", "label": "Turbo actuator duty", "label_ru": "Управление актуатором турбины", "unit": "%" },
+    { "arg": "IPUMG",  "result": "STAT_UMGEBUNGSDRUCK_WERT",        "label": "Ambient pressure",      "label_ru": "Атмосферное давление",     "unit": "bar", "unit_ru": "бар", "scale": 0.001, "format": "0.00" },
+
+    { "arg": "SLMMG",  "result": "STAT_LUFTMASSE_SOLL_WERT",        "label": "Air mass target",       "label_ru": "Воздух: задание",          "unit": "mg/stroke", "unit_ru": "мг/такт", "group": "Air & EGR", "group_ru": "Воздух и EGR" },
+    { "arg": "ILMMG",  "result": "STAT_LUFTMASSE_PRO_HUB_WERT",     "label": "Air mass actual",       "label_ru": "Воздух: факт",             "unit": "mg/stroke", "unit_ru": "мг/такт" },
+    { "arg": "ILMKG",  "result": "STAT_LUFTMASSE_WERT",             "label": "Air flow (MAF)",        "label_ru": "Расход воздуха",           "unit": "kg/h", "unit_ru": "кг/ч", "format": "0.0" },
+    { "arg": "IAAGR",  "result": "STAT_ABGASRUECKFUEHRSTELLER_ANSTEUERUNG_WERT", "label": "EGR valve duty", "label_ru": "Управление клапаном EGR", "unit": "%" },
+
+    { "arg": "SPRDR",  "result": "STAT_RAILDRUCK_SOLL_WERT",        "label": "Rail pressure target",  "label_ru": "Рампа: задание",           "unit": "bar", "unit_ru": "бар", "group": "Fuel", "group_ru": "Топливо" },
+    { "arg": "IPRDR",  "result": "STAT_RAILDRUCK_WERT",             "label": "Rail pressure actual",  "label_ru": "Рампа: факт",              "unit": "bar", "unit_ru": "бар" },
+
+    { "arg": "IMRUP",  "result": "STAT_RUSSMASSE_IM_PARTIKELFILTER_WERT", "label": "Soot mass",       "label_ru": "Сажа в фильтре",           "unit": "g", "unit_ru": "г", "format": "0.0", "group": "Diesel particulate filter", "group_ru": "Сажевый фильтр" },
+    { "arg": "IPDIP",  "result": "STAT_DIFFERENZDRUCK_UEBER_PARTIKELFILTER_WERT", "label": "Differential pressure", "label_ru": "Перепад давления на фильтре", "unit": "mbar", "unit_ru": "мбар" },
+    { "arg": "ITAVP1", "result": "STAT_ABGASTEMPERATUR_VOR_PARTIKELFILTER_1_WERT", "label": "Temperature before DPF", "label_ru": "Температура перед фильтром", "unit": "°C" },
+    { "arg": "IDSLRE", "result": "STAT_STRECKE_SEIT_ERFOLGREICHER_REGENERATION_WERT", "label": "Distance since last regen", "label_ru": "Пробег с последнего прожига", "unit": "km", "unit_ru": "км", "scale": 0.001 },
+    // no decoding table for these codes in the SGBD — logged as numbers to compare with real regenerations
+    { "arg": "PFltRgn_numRgn",    "result": "STAT_PFltRgn_numRgn_WERT", "label": "Regen request status (code)", "label_ru": "Статус запроса прожига (код)", "unit": "" },
+    { "arg": "ISRBF",             "result": "STAT_REGENERATION_BLOCKIERUNG_UND_FREIGABE_WERT", "label": "Regen lock (code)", "label_ru": "Блокировка прожига (код)", "unit": "" },
+    { "arg": "CoEOM_stOpModeAct", "result": "STAT_CoEOM_stOpModeAct_WERT", "label": "Operating mode (code)", "label_ru": "Режим работы двигателя (код)", "unit": "", "hex": true },
+
+    { "arg": "IUBAT",  "result": "STAT_UBATT_WERT",                 "label": "Battery voltage",       "label_ru": "Напряжение бортсети",      "unit": "V", "unit_ru": "В", "format": "0.00", "group": "Electrical", "group_ru": "Бортсеть" }
+  ],
+  "extras": [
+    {
+      "sgbd": "KOMB87.PRG", "job": "STATUS_TANKINHALT", "everySeconds": 5,
+      "values": [
+        { "result": "STAT_GEDAEMPFT_ANZ_WERT", "label": "Fuel in tank (as on gauge)", "label_ru": "В баке (как на приборке)", "unit": "l", "unit_ru": "л", "format": "0.0",
+          "group": "Fuel tank (instrument cluster)", "group_ru": "Топливный бак (приборка)" },
+        { "result": "STAT_HEBELGEBER1_WERT",   "label": "Level sensor 1", "label_ru": "Датчик уровня 1", "unit": "l", "unit_ru": "л", "format": "0.0" },
+        { "result": "STAT_HEBELGEBER2_WERT",   "label": "Level sensor 2", "label_ru": "Датчик уровня 2", "unit": "l", "unit_ru": "л", "format": "0.0" }
+      ]
+    }
+  ]
+}
