@@ -58,6 +58,8 @@ static class Live
         // inside a job; then the session is abandoned and a new one is opened when the cable is back.
         const int CycleTimeoutMs = 6000;
         bool quit = false;
+        try
+        {
         while (!stopRequested() && !quit)
         {
             // keys: G — numbers/graphs (П on the Russian layout), Q — quit
@@ -117,10 +119,11 @@ static class Live
                     Read(Commands.Data(cur.Run(g.Key.job, g.Key.jobArgs)), g, all, next);
             });
 
-            // wait, but keep the screen and the keys alive
+            // wait, but keep the screen and the keys alive (polling: Task.Wait would throw on a failed cycle)
             var waited = System.Diagnostics.Stopwatch.StartNew();
-            while (!work.Wait(200))
+            while (!work.IsCompleted)
             {
+                Thread.Sleep(50);
                 if (!Console.IsInputRedirected && Console.KeyAvailable && "qQйЙ".Contains(Console.ReadKey(true).KeyChar)) { quit = true; break; }
                 if (stopRequested() || waited.ElapsedMilliseconds > CycleTimeoutMs) break;
             }
@@ -156,8 +159,12 @@ static class Live
                 string.Join(",", all.Select((v, i) => CsvValue(values[i], v))));
             Draw(p, all, values, history, graphs, status, logPath, stale: false);
         }
-        Abandon(ref ses, waitMs: 2000);   // close the connection so the port is free for the next start
-        log?.Dispose();
+        }
+        finally
+        {
+            Abandon(ref ses, waitMs: 2000);   // close the connection so the port is free for the next start
+            log?.Dispose();
+        }
         return samples;
     }
 

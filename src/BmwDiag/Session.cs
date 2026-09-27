@@ -35,7 +35,7 @@ sealed class Session : IDisposable
             Ediabas.SetConfigProperty("ApiTrace", "1");
         }
         try { Use(sgbd); }
-        catch { Ediabas.Dispose(); throw; }
+        catch { Dispose(); throw; }
     }
 
     // Switch to another SGBD (.PRG, or group .GRP which resolves the variant by asking the ECU)
@@ -65,7 +65,16 @@ sealed class Session : IDisposable
         return Ediabas.ResultSets;
     }
 
-    public void Dispose() => Ediabas.Dispose();
+    // EdiabasLib bug: disposing an interface whose connect failed half-way throws ThreadStateException
+    // (Thread.Join on a comm thread that never started) — and if that happens later in the GC finalizer
+    // it kills the whole process ("Abort trap"). So: dispose here, swallow that, and switch the finalizers off.
+    public void Dispose()
+    {
+        try { Ediabas.Dispose(); } catch { }
+        try { Obd.Dispose(); } catch { }
+        GC.SuppressFinalize(Obd);
+        GC.SuppressFinalize(Ediabas);
+    }
 
     // Human-readable EDIABAS error with a hint for the common cable problems
     public static string Explain(Exception ex)
