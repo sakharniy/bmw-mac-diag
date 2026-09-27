@@ -135,6 +135,7 @@ static class App
         {
             if (cmd == "ports") return Commands.ListPorts();
             if (cmd == "setup") return Menu.Setup();
+        if (cmd == "probe-nofiles") return Probe.Run(Settings.Load(ecuFlag, portFlag, trace));   // experiment, not in --help
             if (cmd == "menu") return Menu.Run(ecuFlag, portFlag, trace);
             if (cmd == "report") return Menu.OpenReport(Settings.Load(ecuFlag, portFlag, trace), pos.Count > 1 ? pos[1] : null, !noOpen);
 
