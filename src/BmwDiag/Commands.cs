@@ -132,8 +132,8 @@ static class Commands
         return Status(r);
     }
 
-    // Scan list: JSON array of { "name": "...", "sgbd": "..." }
-    public record Unit(string name, string sgbd, string name_ru = null)
+    // Scan list: JSON array of { "name": "...", "sgbd": "...", "addr": "0x12" } (addr: bus address, for the basic mode)
+    public record Unit(string name, string sgbd, string name_ru = null, string addr = null)
     {
         // not "Name": System.Text.Json would bind it to the "name" constructor parameter too
         public string Title => L.Ru && name_ru != null ? name_ru : name;

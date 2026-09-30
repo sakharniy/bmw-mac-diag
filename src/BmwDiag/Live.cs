@@ -9,7 +9,7 @@ static class Live
 {
     static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    public static int Run(Settings s, Profile p, string logPath, bool startWithGraphs = false)
+    public static int Run(Settings s, Profile p, string logPath, bool startWithGraphs = false, Func<ILiveSource> source = null)
     {
         bool stop = false;
         ConsoleCancelEventHandler onCtrlC = (_, e) => { e.Cancel = true; stop = true; };
@@ -21,7 +21,8 @@ static class Live
         int needRows = Math.Max(LineCount(all), Charts.MinRows(Charts.For(p).Count)) + 1;
         Console.Write("\x1b[?1049h\x1b[?25l" + $"\x1b[8;{needRows};{Math.Max(oldCols, 90)}t" + "\x1b[2J");
         int samples = 0;
-        try { samples = Loop(s, p, all, logPath, () => stop, startWithGraphs); }
+        source ??= () => new SgbdSource(s, p, all);
+        try { samples = Loop(s, p, all, logPath, () => stop, startWithGraphs, source); }
         finally
         {
             Console.CancelKeyPress -= onCtrlC;
@@ -31,9 +32,9 @@ static class Live
         return 0;
     }
 
-    static int Loop(Settings s, Profile p, List<Profile.Value> all, string logPath, Func<bool> stopRequested, bool startWithGraphs)
+    static int Loop(Settings s, Profile p, List<Profile.Value> all, string logPath, Func<bool> stopRequested, bool startWithGraphs,
+                    Func<ILiveSource> newSource)
     {
-
         var values = new double?[all.Count];
         StreamWriter log = null;
         if (logPath != null)
@@ -43,10 +44,7 @@ static class Live
             log.WriteLine("time," + string.Join(",", all.Select(v => Csv($"{v.Label} ({v.Unit})"))));
         }
 
-        string blockArgs = string.Join(";", p.values.Where(v => v.arg != null).Select(v => v.arg));
-        var extraTimers = p.extras.Select(_ => (System.Diagnostics.Stopwatch)null).ToArray();
-        Session ses = null;
-        bool defined = false;
+        ILiveSource ses = null;
         int samples = 0;
         var rate = System.Diagnostics.Stopwatch.StartNew();
         string status = T("connecting...", "подключение...");
@@ -74,7 +72,6 @@ static class Live
             if (s.Port != null && !File.Exists(s.Port))
             {
                 Abandon(ref ses);
-                defined = false;
                 status = T("the cable is disconnected from the Mac (USB) — plug it back in, the recording continues by itself",
                            "кабель отключился от мака (USB) — вставьте его обратно, запись продолжится сама");
                 Draw(p, all, values, history, graphs, status, logPath, stale: true);
@@ -84,39 +81,10 @@ static class Live
 
             var next = (double?[])values.Clone();          // the worker fills a copy; taken over only on success
             var cur = ses;
-            bool def = defined;
             var work = Task.Run(() =>
             {
-                cur ??= new Session(s, p.sgbd);
-                // slow values from other units, every N seconds
-                for (int x = 0; x < p.extras.Count; x++)
-                {
-                    if (cur.Abort) return;
-                    if (extraTimers[x] != null && extraTimers[x].Elapsed.TotalSeconds < p.extras[x].everySeconds) continue;
-                    var ex = p.extras[x];
-                    try
-                    {
-                        cur.Use(ex.sgbd);
-                        Read(Commands.Data(cur.Run(ex.job, ex.jobArgs)), ex.values, all, next);
-                    }
-                    catch { /* keep the last value; the main unit matters more */ }
-                    finally
-                    {
-                        if (!cur.Abort) cur.Use(p.sgbd);
-                        def = false;   // the block must be defined again after switching units
-                        extraTimers[x] = System.Diagnostics.Stopwatch.StartNew();
-                    }
-                }
-                if (p.block != null && blockArgs.Length > 0)
-                {
-                    var r = Commands.Data(cur.Run(p.block.job, (def ? p.block.nextPrefix : p.block.firstPrefix) + blockArgs));
-                    string js = r.TryGetValue("JOB_STATUS", out var st) ? st.OpData as string : null;
-                    if (js != "OKAY") throw new Exception($"{p.block.job}: JOB_STATUS {js}");
-                    def = true;
-                    Read(r, p.values.Where(v => v.arg != null), all, next);
-                }
-                foreach (var g in p.values.Where(v => v.job != null).GroupBy(v => (v.job, v.jobArgs)))
-                    Read(Commands.Data(cur.Run(g.Key.job, g.Key.jobArgs)), g, all, next);
+                cur ??= newSource();
+                cur.ReadCycle(next);
             });
 
             // wait, but keep the screen and the keys alive (polling: Task.Wait would throw on a failed cycle)
@@ -133,7 +101,6 @@ static class Live
                 if (cur != null) cur.Abort = true;
                 ses = cur;
                 Abandon(ref ses);
-                defined = false;
                 if (quit || stopRequested()) break;
                 status = T("no answer — waiting for the car / cable...", "нет ответа — жду машину / кабель...");
                 Draw(p, all, values, history, graphs, status, logPath, stale: true);
@@ -143,14 +110,12 @@ static class Live
             if (work.IsFaulted)
             {
                 var ex = work.Exception.GetBaseException();
-                defined = false;
-                if (ex.Message.Contains("IFH_0018") || ex.Message.Contains("SYS_0010") || ex.Message.Contains("IFH_0003")) Abandon(ref ses);
+                if (ex is LinkLostException || ex.Message.Contains("IFH_0018") || ex.Message.Contains("SYS_0010") || ex.Message.Contains("IFH_0003")) Abandon(ref ses);
                 status = T("no data: ", "нет данных: ") + Session.Explain(ex).Replace("\n", " ");
                 Draw(p, all, values, history, graphs, status, logPath, stale: true);
                 Thread.Sleep(1000);
                 continue;
             }
-            defined = def;
             values = next;
             samples++;
             history.Add(values);
@@ -168,8 +133,8 @@ static class Live
         return samples;
     }
 
-    // Close a session without letting a stuck EdiabasLib call block the caller
-    static void Abandon(ref Session ses, int waitMs = 0)
+    // Close a data source without letting a stuck EdiabasLib call block the caller
+    static void Abandon(ref ILiveSource ses, int waitMs = 0)
     {
         if (ses == null) return;
         var old = ses;
@@ -179,7 +144,7 @@ static class Live
         if (waitMs > 0) t.Wait(waitMs);
     }
 
-    static void Read(Dictionary<string, EdiabasNet.ResultData> r, IEnumerable<Profile.Value> which,
+    internal static void Read(Dictionary<string, EdiabasNet.ResultData> r, IEnumerable<Profile.Value> which,
                      List<Profile.Value> all, double?[] values)
     {
         foreach (var v in which)
@@ -249,4 +214,69 @@ static class Live
           .Append("\x1b[K\x1b[J");
         Console.Write(sb.ToString());
     }
+}
+
+// Where live values come from: the SGBD of the car (full mode) or plain OBD without BMW files (basic mode).
+// ReadCycle fills the values of one cycle and throws on link errors; Abort stops a running read.
+interface ILiveSource : IDisposable
+{
+    bool Abort { get; set; }
+    void ReadCycle(double?[] values);
+}
+
+// Full mode: EdiabasLib + SGBD. Values with "arg" through the block job, "job" values, "extras" from other units.
+sealed class SgbdSource(Settings s, Profile p, List<Profile.Value> all) : ILiveSource
+{
+    readonly string blockArgs = string.Join(";", p.values.Where(v => v.arg != null).Select(v => v.arg));
+    readonly System.Diagnostics.Stopwatch[] extraTimers = new System.Diagnostics.Stopwatch[p.extras.Count];
+    Session ses;
+    bool defined;      // the block is defined in the unit, "NEIN" is enough
+    volatile bool abort;
+
+    public bool Abort { get => abort; set { abort = value; if (ses != null) ses.Abort = value; } }
+
+    public void ReadCycle(double?[] next)
+    {
+        try
+        {
+            ses ??= new Session(s, p.sgbd);
+            ses.Abort = abort;
+            // slow values from other units, every N seconds
+            for (int x = 0; x < p.extras.Count; x++)
+            {
+                if (abort) return;
+                if (extraTimers[x] != null && extraTimers[x].Elapsed.TotalSeconds < p.extras[x].everySeconds) continue;
+                var ex = p.extras[x];
+                try
+                {
+                    ses.Use(ex.sgbd);
+                    Live.Read(Commands.Data(ses.Run(ex.job, ex.jobArgs)), ex.values, all, next);
+                }
+                catch { /* keep the last value; the main unit matters more */ }
+                finally
+                {
+                    if (!abort) ses.Use(p.sgbd);
+                    defined = false;   // the block must be defined again after switching units
+                    extraTimers[x] = System.Diagnostics.Stopwatch.StartNew();
+                }
+            }
+            if (p.block != null && blockArgs.Length > 0)
+            {
+                var r = Commands.Data(ses.Run(p.block.job, (defined ? p.block.nextPrefix : p.block.firstPrefix) + blockArgs));
+                string js = r.TryGetValue("JOB_STATUS", out var st) ? st.OpData as string : null;
+                if (js != "OKAY") throw new Exception($"{p.block.job}: JOB_STATUS {js}");
+                defined = true;
+                Live.Read(r, p.values.Where(v => v.arg != null), all, next);
+            }
+            foreach (var g in p.values.Where(v => v.job != null).GroupBy(v => (v.job, v.jobArgs)))
+                Live.Read(Commands.Data(ses.Run(g.Key.job, g.Key.jobArgs)), g, all, next);
+        }
+        catch
+        {
+            defined = false;
+            throw;
+        }
+    }
+
+    public void Dispose() => ses?.Dispose();
 }

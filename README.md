@@ -23,6 +23,8 @@ with graphs, get a drive report in the browser. Built on [EdiabasLib](https://gi
 - **Drive report** in the browser from a recording: synchronized charts, values on hover, zoom, summary, table.
   Works offline — easy to send to a mechanic.
 - **Recognises the car by itself**: asks the engine unit which variant it is and picks or creates a live profile for it.
+- **Works without BMW files too** (basic mode): standard OBD engine values, fault codes of all units (without descriptions),
+  part numbers — see [Without SGBD files](#without-sgbd-files-basic-mode).
 - English and Russian interface (follows the macOS language).
 
 ## What you need
@@ -33,7 +35,7 @@ with graphs, get a drive report in the browser. Built on [EdiabasLib](https://gi
 - **.NET 10 SDK**.
 - **SGBD files** (`*.PRG`, `*.GRP`) — the descriptions of the control units. They are BMW property and are
   **not included**; you have to get them yourself (they come with BMW diagnostic software packages).
-  See [SGBD files](#sgbd-files).
+  See [SGBD files](#sgbd-files). Without them the program works in [basic mode](#without-sgbd-files-basic-mode).
 
 ## Install
 
@@ -109,6 +111,29 @@ garbage or empty live values. Example from the test car: `D71N47A0.PRG` read fau
 empty ("Too less data") — the unit is really a `D72N47B0`, which `T_GRTB.PRG` maps from the unit's
 `ID_VAR_INDEX` / `ID_DIAG_INDEX`.
 
+## Without SGBD files (basic mode)
+
+When the SGBD folder is empty (or with `--basic`) the program talks to the car directly, with standard read requests
+only. The menu says so in its header and offers what works this way:
+
+| | basic mode | with SGBD files |
+|---|---|---|
+| Live engine data | the standard OBD values the engine supports (test car: 19 — engine speed, load, pedal, coolant, intake pressure, air mass, EGR, rail pressure, catalyst temperature, speed, voltage…), ~5 per second; graphs, CSV and report as usual | everything the unit has (1600+ values on the N47): boost and air mass target vs actual, DPF soot… |
+| Faults | BMW code (hex) and state (active now / stored) for every unit, OBD P-codes of the engine — **no descriptions** | codes with descriptions and details |
+| Identification | BMW part number, date, diagnosis index / variant of every unit | + the SGBD variant |
+| Clearing faults | no | yes |
+
+The bus address of every unit comes from the scan list (`"addr"` in `scan/e9x.json`). Tested on the E93 (D-CAN);
+K-line cars are not tested.
+
+```sh
+./bmwdiag --basic                       # the menu in basic mode
+./bmwdiag live   --basic                # standard OBD values
+./bmwdiag scan   --basic                # fault codes of all units
+./bmwdiag faults --basic [KOMB87.PRG]   # one unit (default: engine; or a bus address like 0x60) + OBD P-codes
+./bmwdiag ident  --basic                # part numbers of all units
+```
+
 ## Command line
 
 Everything in the menu is also a command (`./bmwdiag --help` for the full list):
@@ -131,7 +156,7 @@ Everything in the menu is also a command (`./bmwdiag --help` for the full list):
 ./bmwdiag raw    D72N47B0.PRG "22 40 22"                   # raw KWP2000 request (read services only)
 ```
 
-Options: `--port <dev>`, `--ecu <dir>`, `--log <file>` / `--no-log`, `--graphs`, `--lang en|ru`,
+Options: `--port <dev>`, `--ecu <dir>`, `--log <file>` / `--no-log`, `--graphs`, `--basic`, `--lang en|ru`,
 `--trace` (EDIABAS communication trace into `trace/`). Settings live in `~/.config/bmw-mac-diag/config.json`:
 
 ```json

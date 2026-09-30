@@ -5,7 +5,8 @@ namespace BmwDiag;
 // Interactive menu — what you get when you double-click "BMW Diag.command" or run bmwdiag without arguments.
 static class Menu
 {
-    public static int Run(string ecuFlag, string portFlag, bool trace)
+    // basic: work without the SGBD files (standard OBD, bare fault codes); also automatic when there are none
+    public static int Run(string ecuFlag, string portFlag, bool trace, bool forceBasic = false)
     {
         // first start (no settings yet): check the BMW files, detect the car, pick or create its profile
         if (Settings.ReadConfig() == null && ecuFlag == null) FirstRun(portFlag, trace);
@@ -23,17 +24,33 @@ static class Menu
             Console.WriteLine(T("  cable:        ", "  кабель:       ") +
                 (s.Port ?? "\x1b[33m" + T("not found — plug the cable into the Mac", "не найден — вставьте кабель в мак") + "\x1b[0m"));
             int n = CountSgbd(s.EcuPath);
+            bool basic = forceBasic || n == 0;
             Console.WriteLine(T("  SGBD folder:  ", "  папка SGBD:   ") + s.EcuPath + "  " + (n > 0
                 ? T($"({n} files)", $"({n} файлов)")
                 : "\x1b[33m" + T("(no .PRG/.GRP files — choose 6)", "(нет файлов .PRG/.GRP — выберите 6)") + "\x1b[0m"));
-            Console.WriteLine(T("  car profile:  ", "  профиль:      ") +
-                (p?.Name ?? profileError ?? "\x1b[33m" + T("not chosen — choose 6", "не выбран — выберите 6") + "\x1b[0m"));
+            if (basic)
+                Console.WriteLine(T("  mode:         ", "  режим:        ") + "\x1b[33m" +
+                    T("basic, without BMW files — standard OBD values, fault codes without descriptions",
+                      "базовый, без файлов BMW — стандартные показания OBD, коды ошибок без расшифровки") + "\x1b[0m");
+            else
+                Console.WriteLine(T("  car profile:  ", "  профиль:      ") +
+                    (p?.Name ?? profileError ?? "\x1b[33m" + T("not chosen — choose 6", "не выбран — выберите 6") + "\x1b[0m"));
             Console.WriteLine();
-            Console.WriteLine(T("  1  Live engine data (screen + CSV log)", "  1  Живые показания двигателя (экран + запись CSV)"));
-            Console.WriteLine(T("  2  Engine faults", "  2  Ошибки двигателя"));
-            Console.WriteLine(T("  3  Scan all control units", "  3  Ошибки всех блоков"));
-            Console.WriteLine(T("  4  Identify engine control unit", "  4  Определить блок двигателя"));
-            Console.WriteLine(T("  5  Clear faults of a control unit (choose from a list)", "  5  Стереть ошибки блока (выбор из списка)"));
+            if (basic)
+            {
+                Console.WriteLine(T("  1  Live engine data, standard OBD (screen + CSV log)", "  1  Живые показания двигателя, стандартный OBD (экран + запись CSV)"));
+                Console.WriteLine(T("  2  Engine faults (codes)", "  2  Ошибки двигателя (коды)"));
+                Console.WriteLine(T("  3  Faults of all control units (codes)", "  3  Ошибки всех блоков (коды)"));
+                Console.WriteLine(T("  4  Identify the control units (BMW part numbers)", "  4  Определить блоки (номера деталей BMW)"));
+            }
+            else
+            {
+                Console.WriteLine(T("  1  Live engine data (screen + CSV log)", "  1  Живые показания двигателя (экран + запись CSV)"));
+                Console.WriteLine(T("  2  Engine faults", "  2  Ошибки двигателя"));
+                Console.WriteLine(T("  3  Scan all control units", "  3  Ошибки всех блоков"));
+                Console.WriteLine(T("  4  Identify engine control unit", "  4  Определить блок двигателя"));
+                Console.WriteLine(T("  5  Clear faults of a control unit (choose from a list)", "  5  Стереть ошибки блока (выбор из списка)"));
+            }
             Console.WriteLine(T("  6  Settings (SGBD folder, car profile, language)", "  6  Настройки (папка SGBD, профиль машины, язык)"));
             Console.WriteLine(T("  7  Report of a recording (opens in the browser)", "  7  Отчёт по записи (откроется в браузере)"));
             Console.WriteLine(T("  0  Quit", "  0  Выход"));
@@ -49,8 +66,19 @@ static class Menu
                 if (choice == "7") { ChooseRecording(s); goto done; }
                 if (s.Port == null) throw new UsageException(T("the cable is not found — plug it into the Mac (bmwdiag ports)",
                                                                "кабель не найден — вставьте его в мак (bmwdiag ports)"));
-                if (n == 0) throw new UsageException(T("no SGBD files — choose 6 and set the folder with your .PRG/.GRP files",
-                                                       "нет файлов SGBD — выберите 6 и укажите папку с файлами .PRG/.GRP"));
+                if (basic)
+                {
+                    switch (choice)
+                    {
+                        case "1": Basic.RunLive(s, Path.Combine(s.LogDir, $"live-obd-{DateTime.Now:yyyyMMdd-HHmmss}.csv"), false); break;
+                        case "2": Basic.Faults(s, null); break;
+                        case "3": Basic.Scan(s); break;
+                        case "4": Basic.IdentAll(s); break;
+                        case "5": throw new UsageException(T("clearing faults needs the BMW files (SGBD) — choose 6 and set their folder",
+                                                             "для стирания ошибок нужны файлы BMW (SGBD) — выберите 6 и укажите папку с ними"));
+                    }
+                    goto done;
+                }
                 if (choice is "1" or "2" or "4" && p == null) throw new UsageException(T("choose your car profile first (6)",
                                                                                           "сначала выберите профиль машины (6)"));
                 switch (choice)
@@ -187,7 +215,9 @@ static class Menu
                                 "Copy them into the folder above, or type the path / drag the folder with them from Finder into this window.",
                                 "Они не входят в программу (это собственность BMW), их нужно найти самостоятельно.\n" +
                                 "Скопируйте их в папку выше или введите путь / перетащите папку с ними из Finder в это окно."));
-            Console.Write(T("folder (Enter = check again, s = skip): ", "папка (Enter — проверить снова, s — пропустить): "));
+            Console.WriteLine(T("Without them the program works in basic mode: standard OBD engine values and fault codes without descriptions.",
+                                "Без них программа работает в базовом режиме: стандартные показания двигателя OBD и коды ошибок без расшифровки."));
+            Console.Write(T("folder (Enter = check again, s = skip, basic mode): ", "папка (Enter — проверить снова, s — пропустить, базовый режим): "));
             string line = Console.ReadLine();
             if (line == null) return dir;
             string a = CleanPath(line);
@@ -298,7 +328,8 @@ static class Menu
             : null;
         if (csv == null || !File.Exists(csv)) throw new UsageException(T("no recording found — start live data first", "запись не найдена — сначала запустите живые показания"));
         Profile p = null;
-        try { if (s.ProfilePath != null) p = Profile.Load(s.ProfilePath); } catch { }
+        if (Path.GetFileName(csv).StartsWith("live-obd-")) p = Basic.ObdProfile();   // recorded in basic mode
+        else try { if (s.ProfilePath != null) p = Profile.Load(s.ProfilePath); } catch { }
         string html = Report.Build(csv, p);
         Console.WriteLine(T($"report: {html}", $"отчёт: {html}"));
         if (open) try { System.Diagnostics.Process.Start("open", $"\"{html}\""); } catch { }
@@ -375,7 +406,7 @@ static class Menu
 
     static void Clear() { try { Console.Clear(); } catch (IOException) { } }
 
-    static int CountSgbd(string dir) =>
+    public static int CountSgbd(string dir) =>
         Directory.Exists(dir)
             ? Directory.EnumerateFiles(dir).Count(f => f.EndsWith(".prg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".grp", StringComparison.OrdinalIgnoreCase))
             : 0;

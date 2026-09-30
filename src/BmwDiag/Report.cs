@@ -12,7 +12,8 @@ static class Report
 {
     static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    // charts of the report, by profile "arg"; only those whose columns are in the CSV are shown
+    // charts of the report, by profile "arg" (BMW block args, or OBD_xx of the basic mode);
+    // only those whose columns are in the CSV are shown
     record Spec(string Title, string TitleRu, string[] Args, double? Clip = null, double MinSpan = 0, string Note = null, string NoteRu = null);
 
     static readonly Spec[] Specs =
@@ -23,10 +24,13 @@ static class Report
         new("Actuators: EGR valve and turbo", "Управление: клапан EGR и актуатор турбины", new[] { "IAAGR", "IALDS" }, MinSpan: 20),
         new("Temperature before DPF", "Температура перед сажевым фильтром", new[] { "ITAVP1" }, MinSpan: 50),
         new("Soot mass in DPF", "Сажа в фильтре", new[] { "IMRUP" }, MinSpan: 5),
-        new("Engine speed", "Обороты", new[] { "INMOT" }, MinSpan: 500),
-        new("Vehicle speed", "Скорость", new[] { "IVKMH" }, MinSpan: 20),
-        new("Rail pressure", "Давление в рампе", new[] { "SPRDR", "IPRDR" }, MinSpan: 200),
-        new("Coolant", "Охлаждающая жидкость", new[] { "ITKUM" }, MinSpan: 20),
+        new("Intake manifold pressure (abs.)", "Давление во впуске (абс.)", new[] { "OBD_0B" }, MinSpan: 0.3),
+        new("Air mass flow", "Расход воздуха", new[] { "OBD_10" }, MinSpan: 50),
+        new("EGR commanded", "EGR: задание", new[] { "OBD_2C" }, MinSpan: 20),
+        new("Engine speed", "Обороты", new[] { "INMOT", "OBD_0C" }, MinSpan: 500),
+        new("Vehicle speed", "Скорость", new[] { "IVKMH", "OBD_0D" }, MinSpan: 20),
+        new("Rail pressure", "Давление в рампе", new[] { "SPRDR", "IPRDR", "OBD_23" }, MinSpan: 200),
+        new("Coolant", "Охлаждающая жидкость", new[] { "ITKUM", "OBD_05" }, MinSpan: 20),
     };
 
     public static string Build(string csvPath, Profile profile)
@@ -108,26 +112,27 @@ static class Report
         string Num(double v, int d) => v.ToString("F" + d, Inv).Replace('.', Ru ? ',' : '.');   // invariant globalization: no ru-RU culture
         double dur = t[^1] - t[0];
         Tile("Duration", "Длительность", $"{(int)dur / 60}:{(int)dur % 60:00}");
-        int Col(string arg) => byArg.TryGetValue(arg, out int c) ? c : -1;
-        (double min, double max, double first, double last)? Stat(string arg)
+        // the first of the args that is in the recording (BMW arg, or its OBD twin)
+        int Col(params string[] args) => args.Where(byArg.ContainsKey).Select(a => byArg[a]).DefaultIfEmpty(-1).First();
+        (double min, double max, double first, double last)? Stat(params string[] args)
         {
-            int c = Col(arg);
+            int c = Col(args);
             if (c < 0) return null;
             var v = data[c].Where(x => x != null).Select(x => x.Value).ToList();
             return v.Count == 0 ? null : (v.Min(), v.Max(), v[0], v[^1]);
         }
-        if (Stat("IVKMH") is { } sp2)
+        if (Stat("IVKMH", "OBD_0D") is { } sp2)
         {
-            double km = 0; int c = Col("IVKMH");
+            double km = 0; int c = Col("IVKMH", "OBD_0D");
             for (int i = 1; i < t.Count; i++) if (data[c][i] is double a && data[c][i - 1] is double b) km += (a + b) / 2 * (t[i] - t[i - 1]) / 3600;
             Tile("Distance", "Пробег", Num(km, 1) + T(" km", " км"));
             Tile("Max speed", "Макс. скорость", Num(sp2.max, 0) + T(" km/h", " км/ч"));
         }
-        if (Stat("INMOT") is { } rpm) Tile("Max engine speed", "Макс. обороты", Num(rpm.max, 0));
-        if (Stat("IPLAD") is { } bst) Tile("Max boost (abs)", "Макс. наддув (абс.)", Num(bst.max, 2) + T(" bar", " бар"));
+        if (Stat("INMOT", "OBD_0C") is { } rpm) Tile("Max engine speed", "Макс. обороты", Num(rpm.max, 0));
+        if (Stat("IPLAD", "OBD_0B") is { } bst) Tile("Max boost (abs)", "Макс. наддув (абс.)", Num(bst.max, 2) + T(" bar", " бар"));
         if (Stat("ITAVP1") is { } dpf) Tile("Max temp. before DPF", "Макс. темп. перед фильтром", Num(dpf.max, 0) + " °C");
         if (Stat("IMRUP") is { } soot) Tile("Soot: start → end", "Сажа: начало → конец", $"{Num(soot.first, 1)} → {Num(soot.last, 1)}" + T(" g", " г"));
-        if (Stat("ITKUM") is { } cool) Tile("Coolant: start → end", "Жидкость: начало → конец", $"{Num(cool.first, 0)} → {Num(cool.last, 0)} °C");
+        if (Stat("ITKUM", "OBD_05") is { } cool) Tile("Coolant: start → end", "Жидкость: начало → конец", $"{Num(cool.first, 0)} → {Num(cool.last, 0)} °C");
 
         string file = Path.GetFileName(csvPath);
         string title2 = T("Drive report", "Отчёт о поездке") + (profile != null ? " — " + profile.Name : "");

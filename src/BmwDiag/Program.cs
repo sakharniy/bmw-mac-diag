@@ -33,6 +33,14 @@ static class App
           watch  <SGBD> <JOB> [args]     repeat a job, write numeric results to CSV (--seconds N)
           raw    <SGBD> "<hex>[;<hex>]"  send raw KWP2000 requests (read services only)
 
+        without BMW files (basic mode: automatic when the SGBD folder is empty, or --basic):
+          live                           standard OBD engine values (screen + CSV + report)
+          faults [unit]                  fault codes without descriptions + OBD P-codes (default: engine;
+                                         unit = name from the scan list, e.g. KOMB87.PRG, or bus address, e.g. 0x60)
+          scan                           fault codes of all units in the scan list
+          ident                          BMW part numbers of all units in the scan list
+          (clearing faults needs the SGBD files)
+
         options:
           --port <dev>     serial port (default: auto, /dev/cu.usbserial-*)
           --ecu <dir>      folder with SGBD files (.PRG/.GRP)   (default: <repo>/ecu)
@@ -42,6 +50,7 @@ static class App
           --yes            do not ask for confirmation (clear)
           --all            faults: print every result field
           --graphs         live: start with the graphs (key G switches)
+          --basic          work without the SGBD files (see above), also in the menu
           --no-open        report: only write the HTML, do not open the browser
           --lang en|ru     interface language (default: macOS system language)
 
@@ -68,6 +77,14 @@ static class App
           watch  <SGBD> <JOB> [аргументы]  повторять job, числовые результаты в CSV (--seconds N)
           raw    <SGBD> "<hex>[;<hex>]"  сырые запросы KWP2000 (только чтение)
 
+        без файлов BMW (базовый режим: сам, если папка SGBD пуста, или --basic):
+          live                           стандартные показания двигателя OBD (экран + CSV + отчёт)
+          faults [блок]                  коды ошибок без расшифровки + P-коды OBD (по умолчанию двигатель;
+                                         блок = имя из списка опроса, напр. KOMB87.PRG, или адрес, напр. 0x60)
+          scan                           коды ошибок всех блоков из списка опроса
+          ident                          номера деталей BMW всех блоков из списка опроса
+          (для стирания ошибок нужны файлы SGBD)
+
         опции:
           --port <dev>     последовательный порт (по умолчанию: авто, /dev/cu.usbserial-*)
           --ecu <папка>    папка с файлами SGBD (.PRG/.GRP)   (по умолчанию: <проект>/ecu)
@@ -77,6 +94,7 @@ static class App
           --yes            не спрашивать подтверждение (clear)
           --all            faults: вывести все поля результата
           --graphs         live: сразу открыть графики (клавиша G переключает)
+          --basic          работать без файлов SGBD (см. выше), в том числе в меню
           --no-open        report: только создать HTML, не открывать браузер
           --lang en|ru     язык интерфейса (по умолчанию: язык системы)
 
@@ -91,7 +109,7 @@ static class App
 
         var pos = new List<string>();
         string portFlag = null, ecuFlag = null, logFlag = null;
-        bool trace = false, yes = false, all = false, noLog = false, graphs = false, noOpen = false;
+        bool trace = false, yes = false, all = false, noLog = false, graphs = false, noOpen = false, basic = false;
         int seconds = 60;
         try
         {
@@ -111,6 +129,7 @@ static class App
                     case "--all": all = true; break;
                     case "--graphs": graphs = true; break;
                     case "--no-open": noOpen = true; break;
+                    case "--basic": basic = true; break;
                     case "-h": case "--help": Console.Write(Usage); return 0;
                     default:
                         if (args[i].StartsWith("--")) throw new UsageException(T($"unknown option {args[i]}", $"неизвестная опция {args[i]}"));
@@ -123,7 +142,7 @@ static class App
         if (pos.Count == 0)
         {
             // started without arguments (e.g. double-click on "BMW Diag.command") -> interactive menu
-            if (!Console.IsInputRedirected) return Menu.Run(ecuFlag, portFlag, trace);
+            if (!Console.IsInputRedirected) return Menu.Run(ecuFlag, portFlag, trace, basic);
             Console.Write(Usage);
             return 1;
         }
@@ -135,8 +154,8 @@ static class App
         {
             if (cmd == "ports") return Commands.ListPorts();
             if (cmd == "setup") return Menu.Setup();
-        if (cmd == "probe-nofiles") return Probe.Run(Settings.Load(ecuFlag, portFlag, trace));   // experiment, not in --help
-            if (cmd == "menu") return Menu.Run(ecuFlag, portFlag, trace);
+            if (cmd == "probe-nofiles") return Probe.Run(Settings.Load(ecuFlag, portFlag, trace));   // experiment, not in --help
+            if (cmd == "menu") return Menu.Run(ecuFlag, portFlag, trace, basic);
             if (cmd == "report") return Menu.OpenReport(Settings.Load(ecuFlag, portFlag, trace), pos.Count > 1 ? pos[1] : null, !noOpen);
 
             var s = Settings.Load(ecuFlag, portFlag, trace);
@@ -146,13 +165,32 @@ static class App
                                           "порт не найден — вставьте кабель в мак (он появляется как /dev/cu.usbserial-*) или укажите --port"));
                 return 2;
             }
-            if (!Directory.Exists(s.EcuPath))
+            string Log(string name) => noLog ? null : logFlag ?? Path.Combine(s.LogDir, $"{name}-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
+
+            // no SGBD files: the commands that work without them switch to the basic mode by themselves
+            bool noFiles = Menu.CountSgbd(s.EcuPath) == 0;
+            if (!basic && noFiles && cmd is "live" or "faults" or "scan" or "ident")
             {
-                Console.Error.WriteLine(T($"SGBD folder not found: {s.EcuPath} — put .PRG/.GRP files there or use --ecu (see README)",
-                                          $"папка SGBD не найдена: {s.EcuPath} — положите туда файлы .PRG/.GRP или укажите --ecu (см. README)"));
+                Console.Error.WriteLine(T($"no SGBD files in {s.EcuPath} — basic mode (standard OBD, fault codes without descriptions)",
+                                          $"нет файлов SGBD в {s.EcuPath} — базовый режим (стандартный OBD, коды ошибок без расшифровки)"));
+                basic = true;
+            }
+            if (basic)
+                return cmd switch
+                {
+                    "live" => Basic.RunLive(s, Log("live-obd"), graphs),
+                    "faults" => Basic.Faults(s, pos.Count > 1 ? pos[1] : null),
+                    "scan" => Basic.Scan(s),
+                    "ident" => Basic.IdentAll(s),
+                    _ => throw new UsageException(T($"'{cmd}' needs the SGBD files; without them: live, faults, scan, ident",
+                                                    $"для '{cmd}' нужны файлы SGBD; без них работают: live, faults, scan, ident")),
+                };
+            if (noFiles)
+            {
+                Console.Error.WriteLine(T($"no SGBD files in {s.EcuPath} — put .PRG/.GRP files there or use --ecu (see README)",
+                                          $"нет файлов SGBD в {s.EcuPath} — положите туда файлы .PRG/.GRP или укажите --ecu (см. README)"));
                 return 2;
             }
-            string Log(string name) => noLog ? null : logFlag ?? Path.Combine(s.LogDir, $"{name}-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
 
             // live view, then the report of the recording
             int RunLive()
